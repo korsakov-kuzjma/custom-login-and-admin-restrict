@@ -2,7 +2,7 @@
 
 :root {
     --primary: #4f46e5;
-    --primary-hover: #4338ca;
+    /* --primary-hover: #4338ca; */
     --bg-body: #f8fafc;
     --text-main: #1e293b;
     --text-muted: #64748b;
@@ -164,6 +164,23 @@ body {
 .login #nav a:hover, 
 .login #backtoblog a:hover {
     color: var(--primary) !important;
+}
+
+.dashicons,
+.dashicons-visibility {
+    color:#4f46e5;
+}
+
+.login .button.wp-hide-pw {
+    padding: 14px 9px;
+}
+
+/* Убираем рамку при фокусе и нажатии на иконку глаза */
+.login .button.wp-hide-pw:focus,
+.login .button.wp-hide-pw:active {
+    outline: none !important;
+    box-shadow: none !important;
+    border-color: transparent !important; /* На всякий случай, если меняется цвет границы */
 }
 
 /* Адаптивность для мобилок */
