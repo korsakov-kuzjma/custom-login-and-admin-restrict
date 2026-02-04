@@ -1,275 +1,495 @@
-<?php
-/**
- * Plugin Name: Custom Login & Admin Restrict
- * Description: Кастомизация страницы входа и ограничение доступа к админке.
- * Version: 1.1.0
- * Author: korsakov-kuzjma
- * Author URI: https://github.com/korsakov-kuzjma
- * Text Domain: custom-login-restrict
-
- * Requires at least: 5.5
- * Requires PHP: 7.4
- * License: GPL-3.0-or-later
- */
-
-namespace CustomLoginRestrict;
-
-// Защита от прямого доступа
-if (!defined('ABSPATH')) {
-    exit;
+html,
+body {
+	height: 100%;
+	margin: 0;
+	padding: 0;
 }
 
-use WP_Error;
-
-/**
- * Основной класс плагина
- */
-class Plugin {
-    private static $instance = null;
-
-    /**
-     * Приватный конструктор для предотвращения создания через new
-     */
-    private function __construct() {
-        $this->init();
-    }
-
-    /**
-     * Получение единственного экземпляра (Singleton)
-     */
-    public static function get_instance(): self {
-        if (null === self::$instance) {
-            self::$instance = new self();
-        }
-        return self::$instance;
-    }
-
-    /**
-     * Инициализация компонентов плагина
-     */
-    private function init(): void {
-        // Запускаем сервисы на соответствующих хуках
-        add_action('login_enqueue_scripts', [$this, 'load_login_customizer']);
-        add_action('admin_init', [$this, 'load_admin_access_controller']);
-        add_action('after_setup_theme', [$this, 'load_admin_bar_manager']);
-    }
-
-    /**
-     * Загрузка кастомизации логина
-     */
-    public function load_login_customizer(): void {
-        $customizer = new LoginCustomizer();
-        $customizer->enqueue_styles();
-        $customizer->add_inline_logo_style();
-    }
-
-    /**
-     * Загрузка контроллера доступа к админке
-     */
-    public function load_admin_access_controller(): void {
-        $controller = new AdminAccessController();
-        $controller->restrict_access();
-    }
-
-    /**
-     * Загрузка менеджера админ-бара
-     */
-    public function load_admin_bar_manager(): void {
-        $manager = new AdminBarManager();
-        $manager->hide_for_non_admins();
-    }
+body {
+	background: #f0f0f1;
+	min-width: 0;
+	color: #3c434a;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+	font-size: 13px;
+	line-height: 1.4;
 }
 
-/**
- * Сервис кастомизации страницы входа
- */
-class LoginCustomizer {
-    private const CSS_HANDLE = 'custom-login-css';
-    private const CACHE_KEY = 'custom_login_site_icon_url';
-
-    /**
-     * Подключает CSS для страницы входа
-     */
-    public function enqueue_styles(): void {
-        $css_path = $this->get_asset_path('css/custom-login-style.css');
-        $css_url = $this->get_asset_url('css/custom-login-style.css');
-
-        if (!$this->file_exists_cached($css_path)) {
-            return;
-        }
-
-        wp_enqueue_style(
-            self::CSS_HANDLE,
-            $css_url,
-            [],
-            $this->get_file_version($css_path)
-        );
-    }
-
-    /**
-     * Добавляет инлайн-стиль с логотипом
-     */
-    public function add_inline_logo_style(): void {
-        $logo_url = $this->get_site_icon_url();
-
-        if (!$logo_url) {
-            return;
-        }
-
-        $css = sprintf(
-            '#login h1 a, .login h1 a { 
-                background-image: url("%s") !important; 
-                background-size: contain !important; 
-                width: 100%% !important; 
-                height: 80px !important; 
-            }',
-            esc_url($logo_url)
-        );
-
-        wp_add_inline_style(self::CSS_HANDLE, $css);
-    }
-
-    /**
-     * URL логотипа ведёт на главную
-     */
-    public function get_logo_url(): string {
-        return home_url('/');
-    }
-
-    /**
-     * Подсказка логотипа — название сайта
-     */
-    public function get_logo_title(): string {
-        return get_bloginfo('name');
-    }
-
-    /**
-     * Получение пути к ресурсу
-     */
-    private function get_asset_path(string $relative_path): string {
-        return plugin_dir_path(__FILE__) . 'assets/' . $relative_path;
-    }
-
-    /**
-     * Получение URL ресурса
-     */
-    private function get_asset_url(string $relative_path): string {
-        return plugin_dir_url(__FILE__) . 'assets/' . $relative_path;
-    }
-
-    /**
-     * Кэшированная проверка существования файла
-     */
-    private function file_exists_cached(string $file_path): bool {
-        static $cache = [];
-        if (!isset($cache[$file_path])) {
-            $cache[$file_path] = file_exists($file_path);
-        }
-        return $cache[$file_path];
-    }
-
-    /**
-     * Получение версии файла с кэшированием
-     */
-    private function get_file_version(string $file_path): ?string {
-        static $versions = [];
-        if (!isset($versions[$file_path])) {
-            $versions[$file_path] = $this->file_exists_cached($file_path) ? filemtime($file_path) : null;
-        }
-        return $versions[$file_path];
-    }
-
-    /**
-     * Получение URL иконки сайта с кэшированием
-     */
-    private function get_site_icon_url(): ?string {
-        $cached = wp_cache_get(self::CACHE_KEY, 'custom_login');
-        if (false !== $cached) {
-            return $cached;
-        }
-
-        $site_icon_id = (int) get_option('site_icon');
-        $url = $site_icon_id > 0 ? wp_get_attachment_image_url($site_icon_id, 'full') : null;
-
-        wp_cache_set(self::CACHE_KEY, $url, 'custom_login', HOUR_IN_SECONDS);
-
-        return $url;
-    }
+a {
+	color: #2271b1;
+	transition-property: border, background, color;
+	transition-duration: .05s;
+	transition-timing-function: ease-in-out;
 }
 
-/**
- * Контроллер ограничения доступа к админке
- */
-class AdminAccessController {
-    /**
-     * Ограничение доступа к админке для не-администраторов
-     */
-    public function restrict_access(): void {
-        // Разрешаем доступ только пользователям с правами управления
-        if ($this->can_manage()) {
-            return;
-        }
-
-        // Разрешаем AJAX, REST API, Cron
-        if ($this->is_safe_request_context()) {
-            return;
-        }
-
-        // Блокируем доступ с HTTP 403
-        $this->forbid_access();
-    }
-
-    /**
-     * Проверка прав пользователя
-     */
-    private function can_manage(): bool {
-        return current_user_can('manage_options');
-    }
-
-    /**
-     * Проверка безопасного контекста запроса
-     */
-    private function is_safe_request_context(): bool {
-        return wp_doing_ajax() || wp_is_json_request() || wp_doing_cron();
-    }
-
-    /**
-     * Отказ в доступе
-     */
-    private function forbid_access(): void {
-        status_header(403);
-        wp_die(
-            esc_html__('Доступ запрещён.', 'custom-login-restrict'),
-            esc_html__('Доступ запрещён', 'custom-login-restrict'),
-            ['response' => 403]
-        );
-    }
+a {
+	outline: 0;
 }
 
-/**
- * Менеджер админ-бара
- */
-class AdminBarManager {
-    /**
-     * Скрывает админ-бар для не-администраторов
-     */
-    public function hide_for_non_admins(): void {
-        if (!$this->can_manage()) {
-            add_filter('show_admin_bar', '__return_false', 999);
-        }
-    }
-
-    /**
-     * Проверка прав пользователя
-     */
-    private function can_manage(): bool {
-        return current_user_can('manage_options');
-    }
+a:hover,
+a:active {
+	color: #135e96;
 }
 
-// Инициализация плагина
-add_action('plugins_loaded', [Plugin::class, 'get_instance']);
+a:focus {
+	color: #043959;
+	box-shadow: 0 0 0 2px #2271b1;
+	/* Only visible in Windows High Contrast mode */
+	outline: 2px solid transparent;
+}
 
-// Регистрация фильтров для логотипа
-add_filter('login_headerurl', [new LoginCustomizer(), 'get_logo_url']);
-add_filter('login_headertext', [new LoginCustomizer(), 'get_logo_title']);
+p {
+	line-height: 1.5;
+}
+
+.login .message,
+.login .notice,
+.login .success {
+	border-left: 4px solid #72aee6;
+	padding: 12px;
+	margin-left: 0;
+	margin-bottom: 20px;
+	background-color: #fff;
+	box-shadow: 0 1px 1px 0 rgba(0, 0, 0, 0.1);
+	word-wrap: break-word;
+	border-radius: 20px;
+}
+
+.login .success {
+	border-left-color: #00a32a;
+}
+
+/* Match border color from common.css */
+.login .notice-error {
+	border-left-color: #d63638;
+}
+
+.login .login-error-list {
+	list-style: none;
+}
+
+.login .login-error-list li + li {
+	margin-top: 4px;
+}
+
+#loginform p.submit,
+.login-action-lostpassword p.submit {
+	border: none;
+	margin: -10px 0 20px; /* May want to revisit this */
+}
+
+.login * {
+	margin: 0;
+	padding: 0;
+}
+
+.login .input::-ms-clear {
+	display: none;
+}
+
+.login .pw-weak {
+	margin-bottom: 15px;
+}
+
+.login .button.wp-hide-pw {
+	background: transparent;
+	border: 1px solid transparent;
+	box-shadow: none;
+	font-size: 14px;
+	line-height: 2;
+	width: 2.5rem;
+	height: 2.5rem;
+	min-width: 40px;
+	min-height: 40px;
+	margin: 0;
+	padding: 5px 9px;
+	position: absolute;
+	right: 0;
+	top: 0;
+}
+
+.login .button.wp-hide-pw:hover {
+	background: transparent;
+}
+
+.login .button.wp-hide-pw:focus {
+	background: transparent;
+	border-color: #3582c4;
+	box-shadow: 0 0 0 1px #3582c4;
+	/* Only visible in Windows High Contrast mode */
+	outline: 2px solid transparent;
+}
+
+.login .button.wp-hide-pw:active {
+	background: transparent;
+	box-shadow: none;
+	transform: none;
+}
+
+.login .button.wp-hide-pw .dashicons {
+	width: 1.25rem;
+	height: 1.25rem;
+	top: 0.25rem;
+}
+
+.login .wp-pwd {
+	position: relative;
+}
+
+.no-js .hide-if-no-js {
+	display: none;
+}
+
+.login form {
+	margin: 24px 0;
+	padding: 26px 24px;
+	font-weight: 400;
+	overflow: hidden;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+	border-radius: 20px
+}
+
+.login form.shake {
+	animation: shake 0.2s cubic-bezier(.19,.49,.38,.79) both;
+	animation-iteration-count: 3;
+	transform: translateX(0);
+}
+
+@keyframes shake {
+	25% {
+		transform: translateX(-20px);
+	}
+	75% {
+		transform: translateX(20px);
+	}
+	100% {
+		transform: translateX(0);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.login form.shake {
+		animation: none;
+		transform: none;
+	}
+}
+
+.login-action-confirm_admin_email #login {
+	width: 60vw;
+	max-width: 650px;
+	margin-top: -2vh;
+}
+
+@media screen and (max-width: 782px) {
+	.login-action-confirm_admin_email #login {
+		box-sizing: border-box;
+		margin-top: 0;
+		padding-left: 4vw;
+		padding-right: 4vw;
+		width: 100vw;
+	}
+}
+
+.login form .forgetmenot {
+	font-weight: 400;
+	float: left;
+	margin-bottom: 0;
+}
+
+.login .button-primary {
+	float: right;
+	border-radius: 20px;
+}
+
+.login .reset-pass-submit {
+	display: flex;
+	flex-flow: row wrap;
+	justify-content: space-between;
+}
+
+.login .reset-pass-submit .button {
+	display: inline-block;
+	float: none;
+	margin-bottom: 6px;
+}
+
+.login .admin-email-confirm-form .submit {
+	text-align: center;
+}
+
+.admin-email__later {
+	text-align: left;
+}
+
+.login form p.admin-email__details {
+	margin: 1.1em 0;
+}
+
+.login .admin-email__heading {
+	border-bottom: 1px #f0f0f1 solid;
+	color: #50575e;
+	font-weight: normal;
+	padding-bottom: 0.5em;
+	text-align: left;
+}
+
+.admin-email__actions div {
+	padding-top: 1.5em;
+}
+
+.login .admin-email__actions .button-primary {
+	float: none;
+	margin-left: 0.25em;
+	margin-right: 0.25em;
+}
+
+#login form p {
+	margin-bottom: 0;
+}
+
+#login form .indicator-hint,
+#login #reg_passmail {
+	margin-bottom: 16px;
+}
+
+#login form p.submit {
+	margin: 0;
+	padding: 0;
+}
+
+.login label {
+	font-size: 14px;
+	line-height: 1.5;
+	display: inline-block;
+	margin-bottom: 3px;
+}
+
+.login .forgetmenot label,
+.login .pw-weak label {
+	line-height: 1.5;
+	vertical-align: baseline;
+}
+
+.login h1 {
+	text-align: center;
+}
+
+.login h1 a {
+	background-image: url(../images/w-logo-blue.png?ver=20131202);
+	background-image: none, url(../images/wordpress-logo.svg?ver=20131107);
+	background-size: 84px;
+	background-position: center top;
+	background-repeat: no-repeat;
+	color: #3c434a;
+	height: 84px;
+	font-size: 20px;
+	font-weight: 400;
+	line-height: 1.3;
+	margin: 0 auto 24px;
+	padding: 0;
+	text-decoration: none;
+	width: 84px;
+	text-indent: -9999px;
+	outline: none;
+	overflow: hidden;
+	display: block;
+}
+
+#login {
+	width: 320px;
+	padding: 5% 0 0;
+	margin: auto;
+}
+
+.login #nav,
+.login #backtoblog {
+	font-size: 13px;
+	padding: 0 24px;
+}
+
+.login #nav {
+	margin: 24px 0 0;
+}
+
+#backtoblog {
+	margin: 16px 0;
+	word-wrap: break-word;
+}
+
+.login #nav a,
+.login #backtoblog a {
+	text-decoration: none;
+	color: #50575e;
+}
+
+.login #nav a:hover,
+.login #backtoblog a:hover,
+.login h1 a:hover {
+	color: #135e96;
+}
+
+.login #nav a:focus,
+.login #backtoblog a:focus,
+.login h1 a:focus {
+	color: #043959;
+}
+
+.login .privacy-policy-page-link {
+	text-align: center;
+	width: 100%;
+	margin: 3em 0 2em;
+}
+
+.login form .input,
+.login input[type="text"],
+.login input[type="password"] {
+	font-size: 24px;
+	line-height: 1.33333333; /* 32px */
+	width: 100%;
+	border-width: 0.0625rem;
+	padding: 0.1875rem 0.3125rem; /* 3px 5px */
+	margin: 0 6px 16px 0;
+	min-height: 40px;
+	max-height: none;
+}
+
+.login input.password-input {
+	font-family: Consolas, Monaco, monospace;
+}
+
+.js.login input.password-input {
+	padding-right: 2.5rem;
+}
+
+.login form .input,
+.login input[type="text"],
+.login form input[type="checkbox"] {
+	background: #fff;
+	border-radius: 20px;
+	padding-left:10px;
+}
+
+.js.login-action-resetpass input[type="text"],
+.js.login-action-resetpass input[type="password"],
+.js.login-action-rp input[type="text"],
+.js.login-action-rp input[type="password"] {
+	margin-bottom: 0;
+}
+
+.login #pass-strength-result {
+	font-weight: 600;
+	margin: -1px 5px 16px 0;
+	padding: 6px 5px;
+	text-align: center;
+	width: 100%;
+}
+
+body.interim-login {
+	height: auto;
+}
+
+.interim-login #login {
+	padding: 0;
+	margin: 5px auto 20px;
+}
+
+.interim-login.login h1 a {
+	width: auto;
+}
+
+.interim-login #login_error,
+.interim-login.login .message {
+	margin: 0 0 16px;
+}
+
+.interim-login.login form {
+	margin: 0;
+}
+
+/* Hide visually but not from screen readers */
+.screen-reader-text,
+.screen-reader-text span {
+	border: 0;
+	clip-path: inset(50%);
+	height: 1px;
+	margin: -1px;
+	overflow: hidden;
+	padding: 0;
+	position: absolute;
+	width: 1px;
+	word-wrap: normal !important; /* many screen reader and browser combinations announce broken words as they would appear visually */
+}
+
+/* Hide the Edge "reveal password" native button */
+input::-ms-reveal {
+	display: none;
+}
+
+#language-switcher {
+	padding: 0;
+	overflow: visible;
+	background: none;
+	border: none;
+	box-shadow: none;
+}
+
+#language-switcher select {
+	margin-right: 0.25em;
+}
+
+.language-switcher {
+	margin: 0 auto;
+	padding: 0 0 24px;
+	text-align: center;
+}
+
+.language-switcher label {
+	margin-right: 0.25em;
+}
+
+.language-switcher label .dashicons {
+	width: auto;
+	height: auto;
+}
+
+.login .language-switcher .button {
+	margin-bottom: 0;
+}
+
+@media screen and (max-height: 550px) {
+	#login {
+		padding: 20px 0;
+	}
+
+	#language-switcher {
+		margin-top: 0;
+	}
+}
+
+
+@media screen and (max-width: 782px) {
+	.interim-login input[type=checkbox] {
+		width: 1rem;
+		height: 1rem;
+	}
+
+	.interim-login input[type=checkbox]:checked:before {
+		width: 1.3125rem;
+		height: 1.3125rem;
+		margin: -0.1875rem 0 0 -0.25rem;
+	}
+
+	#language-switcher label,
+	#language-switcher select {
+		margin-right: 0;
+	}
+}
+
+@media screen and (max-width: 400px) {
+	.login .language-switcher .button {
+		display: block;
+		margin: 5px auto 0;
+		border-radius: 20px;
+	}
+}
